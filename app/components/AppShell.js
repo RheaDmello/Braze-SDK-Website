@@ -7,11 +7,14 @@ export default function AppShell({ children }) {
  const pathname = usePathname();
 
  const hideNavbar = pathname === "/login";
+ const fullWidth = pathname === "/shop" || pathname === "/login";
 
  return (
  <>
  {!hideNavbar && <Navbar />}
- <div className="max-w-6xl mx-auto p-6">{children}</div>
+ <div className={fullWidth ? "w-full" : "max-w-6xl mx-auto p-6"}>
+ {children}
+ </div>
  </>
  );
 }

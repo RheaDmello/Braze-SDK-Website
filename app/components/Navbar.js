@@ -21,7 +21,6 @@ export default function Navbar() {
  setOpen(false);
  }
  };
-
  document.addEventListener("click", handleClickOutside);
  return () => document.removeEventListener("click", handleClickOutside);
  }, []);
@@ -42,7 +41,7 @@ export default function Navbar() {
  }`;
 
  return (
- <div className="flex justify-between items-center p-4 bg-white shadow">
+<div className="flex justify-between items-center p-4 bg-white shadow relative z-[9999]">
  <div className="flex gap-6 items-center">
  <h1
  className="font-bold text-xl cursor-pointer"
@@ -91,26 +90,26 @@ export default function Navbar() {
  <>
  <div
  onClick={() => setOpen(!open)}
- className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center cursor-pointer font-bold"
+ className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center cursor-pointer font-bold select-none"
  >
  {user.email.charAt(0).toUpperCase()}
  </div>
 
  {open && (
- <div className="absolute right-0 mt-2 w-40 bg-white border rounded-lg shadow-md">
+ <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border z-[9999] overflow-hidden">
  <button
  onClick={() => {
  setOpen(false);
  router.push("/profile");
  }}
- className="block w-full text-left px-4 py-2 hover:bg-gray-100"
+ className="block w-full text-left px-4 py-3 hover:bg-gray-100 transition-colors"
  >
  Profile
  </button>
 
  <button
  onClick={handleLogout}
- className="block w-full text-left px-4 py-2 text-red-600 hover:bg-gray-100"
+ className="block w-full text-left px-4 py-3 text-red-600 hover:bg-gray-100 transition-colors"
  >
  Logout
  </button>
