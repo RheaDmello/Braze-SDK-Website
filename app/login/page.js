@@ -20,16 +20,46 @@ export default function LoginPage() {
 
  const isValidEmail = email.trim().includes("@");
 
- const handleLogin = () => {
+const handleLogin = async () => {
  const trimmedEmail = email.trim();
  if (!trimmedEmail.includes("@")) return;
 
  setIsLoading(true);
+
+ try {
+ // ─────────────────────────────────────────────────────────────
+ // STEP 1: Server-side identity resolution
+ // Check if this email already has a Braze profile
+ // ─────────────────────────────────────────────────────────────
+ const res = await fetch("/api/braze-identify", {
+ method: "POST",
+ headers: { "Content-Type": "application/json" },
+ body: JSON.stringify({ email: trimmedEmail }),
+ });
+
+ const data = await res.json();
+
+ if (!res.ok || data.error) {
+ throw new Error(data.error || "Identity check failed");
+ }
+
+ console.log("Braze identity resolution:", data.status, "→ external_id:", data.external_id);
+
+ // The external_id to use — either the existing one or email for new users
+ const externalId = data.external_id;
+
+ // ─────────────────────────────────────────────────────────────
+ // STEP 2: Login locally
+ // ─────────────────────────────────────────────────────────────
  login(trimmedEmail);
 
+ // ─────────────────────────────────────────────────────────────
+ // STEP 3: Now safely call changeUser() with the resolved ID
+ // ─────────────────────────────────────────────────────────────
  onBrazeReady(() => {
  try {
- braze.changeUser(trimmedEmail);
+ // This now correctly links to existing profile OR creates new one
+ braze.changeUser(externalId);
 
  const bUser = braze.getUser();
  if (bUser) {
@@ -38,17 +68,9 @@ export default function LoginPage() {
  const storedProfile =
  JSON.parse(localStorage.getItem(`user_profile_${trimmedEmail}`)) || {};
 
- if (typeof storedProfile.firstName === "string" && storedProfile.firstName.trim()) {
- bUser.setFirstName(storedProfile.firstName.trim());
- }
-
- if (typeof storedProfile.lastName === "string" && storedProfile.lastName.trim()) {
- bUser.setLastName(storedProfile.lastName.trim());
- }
-
- if (typeof storedProfile.phone === "string" && storedProfile.phone.trim()) {
- bUser.setPhoneNumber(storedProfile.phone.trim());
- }
+ if (storedProfile.firstName?.trim()) bUser.setFirstName(storedProfile.firstName.trim());
+ if (storedProfile.lastName?.trim()) bUser.setLastName(storedProfile.lastName.trim());
+ if (storedProfile.phone?.trim()) bUser.setPhoneNumber(storedProfile.phone.trim());
  }
 
  braze.openSession();
@@ -67,7 +89,12 @@ export default function LoginPage() {
  setIsLoading(false);
  }
  });
- };
+ } catch (err) {
+ console.error("Login error:", err);
+ alert("Login failed. Please try again.");
+ setIsLoading(false);
+ }
+};
 
  if (loading) return null;
  if (user) return null;
