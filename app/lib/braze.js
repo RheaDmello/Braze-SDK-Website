@@ -6,28 +6,30 @@ let initialized = false;
 let readyCallbacks = [];
 
 export function initBraze() {
- if (initialized || typeof window === "undefined") return;
+  if (initialized || typeof window === "undefined") return;
 
- braze.initialize(process.env.NEXT_PUBLIC_BRAZE_API_KEY, {
- baseUrl: process.env.NEXT_PUBLIC_BRAZE_ENDPOINT,
- enableLogging: true,
- });
+  braze.initialize(process.env.NEXT_PUBLIC_BRAZE_API_KEY, {
+    baseUrl: process.env.NEXT_PUBLIC_BRAZE_ENDPOINT,
+    enableLogging: false, // ✅ disable logs
+    allowUserSuppliedJavascript: true,
+  });
 
- window.braze = braze;
+  initialized = true;
 
- initialized = true;
- console.log("Braze initialized");
+  braze.openSession();
 
- readyCallbacks.forEach((cb) => cb());
- readyCallbacks = [];
+  readyCallbacks.forEach((cb) => cb());
+  readyCallbacks = [];
 }
 
 export function onBrazeReady(callback) {
- if (initialized) {
- callback();
- } else {
- readyCallbacks.push(callback);
- }
+  if (typeof window === "undefined") return;
+
+  if (initialized) {
+    callback();
+  } else {
+    readyCallbacks.push(callback);
+  }
 }
 
 export { braze };

@@ -91,6 +91,7 @@ export default function Shop() {
  };
 
  const handleAddToCart = (product) => {
+if (product.quantity === 0) return;
  setCart((prev) => [...prev, product]);
  setAddedMap((prev) => ({ ...prev, [product.id]: true }));
  setTimeout(() => setAddedMap((prev) => ({ ...prev, [product.id]: false })), 1500);
@@ -121,32 +122,65 @@ export default function Shop() {
  braze.requestImmediateDataFlush();
  };
 
- const handleCheckout = () => {
- if (cart.length === 0) return;
- const total = cart.reduce((sum, p) => sum + p.price, 0).toFixed(2);
+const handleCheckout = () => {
+  if (cart.length === 0) return;
 
- braze.logCustomEvent("start_checkout", { total_items: cart.length, total_price: total });
+  const total = cart.reduce((sum, p) => sum + p.price, 0).toFixed(2);
 
- cart.forEach((product) => {
- braze.logPurchase(String(product.id), product.price, "USD", 1, {
- product_name: product.name,
- category: product.category,
- });
- });
+  // 🧠 Step 1: Count how many of each product was bought
+  const purchaseMap = {};
+  cart.forEach((item) => {
+    purchaseMap[item.id] = (purchaseMap[item.id] || 0) + 1;
+  });
 
- braze.logCustomEvent("order_placed", {
- total_items: cart.length,
- total_price: total,
- items: cart.map((p) => p.name).join(", "),
- });
- braze.logCustomEvent("order_completed", { total_items: cart.length, total_price: total });
- braze.requestImmediateDataFlush();
+  // 🧠 Step 2: Update catalog quantities
+  const updatedProducts = products.map((product) => {
+    if (purchaseMap[product.id]) {
+      return {
+        ...product,
+        quantity: Math.max(0, product.quantity - purchaseMap[product.id]),
+      };
+    }
+    return product;
+  });
 
- alert(`✅ Order placed! Total: $${total}`);
- setCart([]);
- setCartOpen(false);
- setTimeout(() => braze.requestContentCardsRefresh(), 2000);
- };
+  // ✅ Step 3: Update state (THIS is what updates UI)
+  setProducts(updatedProducts);
+
+  // ─── KEEP YOUR EXISTING BRAZE LOGIC ───
+  braze.logCustomEvent("start_checkout", {
+    total_items: cart.length,
+    total_price: total,
+  });
+
+  cart.forEach((product) => {
+    braze.logPurchase(String(product.id), product.price, "USD", 1, {
+      product_name: product.name,
+      category: product.category,
+    });
+  });
+
+  braze.logCustomEvent("order_placed", {
+    total_items: cart.length,
+    total_price: total,
+    items: cart.map((p) => p.name).join(", "),
+  });
+
+  braze.logCustomEvent("order_completed", {
+    total_items: cart.length,
+    total_price: total,
+  });
+
+  braze.requestImmediateDataFlush();
+
+  alert(`✅ Order placed! Total: $${total}`);
+
+  // 🧹 Clear cart AFTER updating stock
+  setCart([]);
+  setCartOpen(false);
+
+  setTimeout(() => braze.requestContentCardsRefresh(), 2000);
+};
 
  const cartTotal = cart.reduce((sum, p) => sum + p.price, 0).toFixed(2);
 

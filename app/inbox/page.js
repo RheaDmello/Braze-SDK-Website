@@ -1,173 +1,228 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { braze, onBrazeReady } from "../lib/braze";
-import {
- Dialog,
- DialogContent,
- DialogTitle,
-} from "@/components/ui/dialog";
-import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
-import { Button } from "@/components/ui/button";
-import { ExternalLink, Clock } from "lucide-react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import * as braze from "@braze/web-sdk";
+import { onBrazeReady } from "../lib/braze";
+import { Pin, Inbox } from "lucide-react";
 
-export default function InboxPage() {
- const [cards, setCards] = useState([]);
- const [selectedCard, setSelectedCard] = useState(null);
- const [readCards, setReadCards] = useState(new Set());
- const hasFetched = useRef(false);
-
- useEffect(() => {
- onBrazeReady(() => {
- if (hasFetched.current) return;
- hasFetched.current = true;
-
- const email = localStorage.getItem("user_email");
- if (email) braze.changeUser(email);
- braze.openSession();
-
- const cached = braze.getCachedContentCards();
- if (cached?.cards?.length > 0) setCards(cached.cards);
-
- const sub = braze.subscribeToContentCardsUpdates((updates) => {
- setCards(updates.cards || []);
- });
-
- braze.requestContentCardsRefresh();
- return () => braze.removeSubscription(sub);
- });
- }, []);
-
- const handleCardClick = (card) => {
- setSelectedCard(card);
- setReadCards((prev) => new Set([...prev, card.id]));
- braze.logContentCardImpressions([card]);
- if (card.url) braze.logContentCardClick(card);
- };
-
- const handleCardAction = (card) => {
- braze.logContentCardClick(card);
- if (card.url) {
- if (card.url.startsWith("http")) {
- window.open(card.url, "_blank");
- } else {
- braze.handleBrazeAction(card.url);
- }
- }
- setSelectedCard(null);
- };
-
- const formatDate = (timestamp) => {
- if (!timestamp) return "";
- const date = new Date(timestamp * 1000);
- const now = new Date();
- const diff = Math.floor((now - date) / 1000);
- if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
- if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
- return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+// ─── SORTING (pinned first, then newest) ───
+const sortCards = (cards) => {
+  return [...cards].sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
+    return new Date(b.updated) - new Date(a.updated);
+  });
 };
- return (
- <main className="min-h-screen bg-gray-50 px-6 py-8">
- <h1 className="text-3xl font-bold text-gray-900 mb-6">Inbox</h1>
 
- {/* ─── Empty State ─── */}
- {cards.length === 0 ? (
- <div className="flex flex-col items-center justify-center py-32 text-gray-400 gap-3">
- <p className="text-lg font-medium">No messages yet</p>
- <p className="text-sm">Your personalised messages will appear here.</p>
- </div>
- ) : (
- <div className="space-y-4 max-w-3xl">
- {cards.map((card) => {
- const isRead = readCards.has(card.id);
- return (
- <div
- key={card.id}
- onClick={() => handleCardClick(card)}
- className={`flex gap-4 items-start bg-white rounded-2xl p-4 border cursor-pointer hover:shadow-md transition-all duration-200 ${
- !isRead ? "border-blue-200 bg-blue-50/30" : "border-gray-100"
- }`}
- >
- {/* Image */}
- {card.imageUrl && (
- <img
- src={card.imageUrl}
- alt={card.title}
- className="w-16 h-16 rounded-xl object-cover shrink-0"
- />
- )}
+// ─── CARD UI BY TYPE ───
+function CardContent({ card }) {
+  // ─── IMAGE ONLY ───
+  if (card instanceof braze.ImageOnly) {
+    return (
+      <div className="relative">
+        <img
+          src={card.imageUrl}
+          alt=""
+          className="w-full h-auto object-contain"
+        />
 
- {/* Content */}
- <div className="flex-1 min-w-0">
- <div className="flex items-center gap-2">
+        {card.pinned && (
+          <Pin className="absolute top-2 right-2 w-4 h-4 text-white" />
+        )}
+      </div>
+    );
+  }
 
- <h2 className={`text-sm truncate ${!isRead ? "font-bold text-gray-900" : "font-medium text-gray-700"}`}>
- {card.title}
- </h2>
- </div>
- <p className="text-sm text-gray-500 mt-1 line-clamp-2">{card.description}</p>
- 
- </div>
- </div>
- );
- })}
- </div>
- )}
+  // ─── CAPTIONED IMAGE ───
+  if (card instanceof braze.CaptionedImage) {
+    return (
+      <div>
+        <div className="relative">
+          <img
+            src={card.imageUrl}
+            alt={card.title || ""}
+            className="w-full h-auto object-contain"
+          />
 
- {/* ─── Detail Modal ─── */}
- <Dialog open={!!selectedCard} onOpenChange={() => setSelectedCard(null)}>
- <DialogContent className="max-w-lg p-0 overflow-hidden rounded-3xl border-0 shadow-2xl">
- <VisuallyHidden>
- <DialogTitle>{selectedCard?.title || "Message"}</DialogTitle>
- </VisuallyHidden>
+          {card.pinned && (
+            <Pin className="absolute top-2 right-2 w-4 h-4 text-white" />
+          )}
+        </div>
 
- {selectedCard && (
- <>
- {selectedCard.imageUrl && (
- <div className="relative h-52 overflow-hidden">
- <img
- src={selectedCard.imageUrl}
- alt={selectedCard.title}
- className="w-full h-full object-cover"
- />
- <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
- <h2 className="absolute bottom-4 left-5 text-white text-2xl font-extrabold">
- {selectedCard.title}
- </h2>
- </div>
- )}
+        <div className="p-4">
+          {card.title && (
+            <h3 className="font-semibold text-gray-900">{card.title}</h3>
+          )}
 
- <div className="p-6 space-y-4 bg-white">
- {!selectedCard.imageUrl && (
- <h2 className="text-xl font-bold text-gray-900">{selectedCard.title}</h2>
- )}
+          {card.description && (
+            <p className="text-sm text-gray-600 mt-1">
+              {card.description}
+            </p>
+          )}
 
- <p className="text-gray-600 text-sm leading-relaxed">{selectedCard.description}</p>
+          {card.linkText && (
+            <p className="text-blue-600 mt-2 text-sm">
+              {card.linkText}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
- 
+  // ─── CLASSIC ───
+  if (card instanceof braze.ClassicCard) {
+    return (
+      <div className="flex gap-3 p-4">
+        {card.imageUrl && (
+          <img
+            src={card.imageUrl}
+            alt=""
+            className="w-16 h-16 rounded-lg object-cover"
+          />
+        )}
 
- <div className="flex gap-3 pt-2">
- {selectedCard.url && (
- <Button
- onClick={() => handleCardAction(selectedCard)}
- className="flex-1 rounded-2xl py-3 font-bold cursor-pointer bg-black hover:bg-gray-800 flex items-center justify-center gap-2"
- >
- <ExternalLink className="w-4 h-4" /> Open
- </Button>
- )}
- <Button
- variant="outline"
- onClick={() => setSelectedCard(null)}
- className={`rounded-2xl py-3 cursor-pointer ${selectedCard.url ? "flex-1" : "w-full"}`}
- >
- Close
- </Button>
- </div>
- </div>
- </>
- )}
- </DialogContent>
- </Dialog>
- </main>
- );
+        <div className="flex-1">
+          <div className="flex items-start justify-between">
+            <div>
+              {card.title && (
+                <h3 className="font-semibold text-gray-900">
+                  {card.title}
+                </h3>
+              )}
+
+              {card.description && (
+                <p className="text-sm text-gray-600 mt-1">
+                  {card.description}
+                </p>
+              )}
+
+              {card.linkText && (
+                <p className="text-blue-600 mt-1 text-sm">
+                  {card.linkText}
+                </p>
+              )}
+            </div>
+
+            {card.pinned && (
+              <Pin className="w-4 h-4 text-gray-400 ml-2" />
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// ─── MAIN ───
+function InboxPage() {
+  const [mounted, setMounted] = useState(false);
+  const [cards, setCards] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const impressions = useRef(new Set());
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    onBrazeReady(() => {
+      console.log("Braze ready");
+
+      braze.openSession();
+
+      braze.subscribeToInAppMessage((message) => {
+        if (message) {
+          braze.showInAppMessage(message);
+        }
+      });
+
+      const cached = braze.getCachedContentCards();
+      console.log("Cached cards:", cached);
+
+      if (cached?.cards) {
+        const filtered = cached.cards.filter((c) => !c.isControl);
+        setCards(sortCards(filtered));
+        setLoading(false);
+      }
+
+      braze.subscribeToContentCardsUpdates((updates) => {
+        console.log("Content cards update:", updates);
+
+        const filtered = (updates.cards || []).filter(
+          (c) => !c.isControl
+        );
+
+        setCards(sortCards(filtered));
+        setLoading(false);
+      });
+
+      braze.requestContentCardsRefresh();
+    });
+  }, [mounted]);
+
+  // ─── CLICK HANDLER ───
+  const handleCardTap = useCallback((card) => {
+    card.logClick?.();
+
+    braze.logCustomEvent("content_card_clicked", {
+      card_id: card.id,
+      title: card.title,
+    });
+
+    braze.requestImmediateDataFlush?.();
+
+    setTimeout(() => {
+      if (!card.url) return;
+
+      if (!card.url.startsWith("http")) {
+        braze.handleBrazeAction(card.url);
+      } else {
+        window.open(card.url, "_blank");
+      }
+    }, 300);
+  }, []);
+
+  if (!mounted) return null;
+
+  return (
+    <main className="min-h-screen bg-[#F2F2F7]">
+      {loading ? (
+        <div className="text-center py-24">Loading...</div>
+      ) : cards.length === 0 ? (
+        <div className="flex flex-col items-center py-24">
+          <Inbox className="w-12 h-12 text-gray-300" />
+          <p className="text-gray-400">No messages</p>
+        </div>
+      ) : (
+        <div className="max-w-xl mx-auto py-4">
+          {cards.map((card) => {
+            if (!impressions.current.has(card.id)) {
+              impressions.current.add(card.id);
+              card.logImpression?.();
+            }
+
+            return (
+              <div
+                key={card.id}
+                onClick={() => handleCardTap(card)}
+                className="bg-white rounded-xl shadow-sm mb-3 overflow-hidden cursor-pointer hover:shadow-md transition"
+              >
+                <CardContent card={card} />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </main>
+  );
+}
+
+export default function Page() {
+  return <InboxPage />;
 }
