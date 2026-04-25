@@ -10,10 +10,19 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const storedEmail = localStorage.getItem("user_email");
-    const storedExternalId = localStorage.getItem("user_external_id");
+    const storedExternalId = localStorage.getItem("braze_external_id");
 
-    if (storedEmail && storedEmail !== "undefined" && storedEmail !== "null") {
-      setUser({ email: storedEmail, externalId: storedExternalId || storedEmail });
+    if (
+      storedEmail &&
+      storedEmail !== "undefined" &&
+      storedEmail !== "null"
+    ) {
+      setUser({
+        email: storedEmail,
+        // externalId is the canonical Braze ID (same as email in your case,
+        // but kept separate so it's explicit and easy to change later)
+        externalId: storedExternalId || storedEmail,
+      });
     } else {
       setUser(null);
     }
@@ -21,15 +30,20 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, []);
 
+  /**
+   * login(email, externalId)
+   * Both are stored; externalId is what gets passed to braze.changeUser().
+   */
   const login = (email, externalId) => {
+    const id = externalId || email;
     localStorage.setItem("user_email", email);
-    localStorage.setItem("user_external_id", externalId || email);
-    setUser({ email, externalId: externalId || email });
+    localStorage.setItem("braze_external_id", id);
+    setUser({ email, externalId: id });
   };
 
   const logout = () => {
     localStorage.removeItem("user_email");
-    localStorage.removeItem("user_external_id");
+    localStorage.removeItem("braze_external_id");
     setUser(null);
   };
 

@@ -1,217 +1,234 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import * as braze from "@braze/web-sdk";
-import { onBrazeReady } from "../lib/braze";
-import { Pin, Inbox } from "lucide-react";
+import { braze, onBrazeReady } from "../lib/braze";
+import { Pin } from "lucide-react";
 
-// ─── SORTING (pinned first, then newest) ───
-const sortCards = (cards) => {
-  return [...cards].sort((a, b) => {
-    if (a.pinned && !b.pinned) return -1;
-    if (!a.pinned && b.pinned) return 1;
-    return new Date(b.updated) - new Date(a.updated);
-  });
-};
-
-// ─── CARD UI BY TYPE ───
-function CardContent({ card }) {
-  // ─── IMAGE ONLY ───
-  if (card instanceof braze.ImageOnly) {
-    return (
-      <div className="relative">
-        <img
-          src={card.imageUrl}
-          alt=""
-          className="w-full h-auto object-contain"
-        />
-
-        {card.pinned && (
-          <Pin className="absolute top-2 right-2 w-4 h-4 text-white" />
-        )}
-      </div>
-    );
+// ─── Card Type Detection ──────────────────────────────────────────────────────
+function getCardType(card) {
+  if (braze.ImageOnly && card instanceof braze.ImageOnly) return "image_only";
+  if (braze.CaptionedImage && card instanceof braze.CaptionedImage) return "captioned_image";
+  if (braze.ClassicCard && card instanceof braze.ClassicCard) return "classic";
+  if (typeof card.type === "number") {
+    if (card.type === 2) return "image_only";
+    if (card.type === 1) return "captioned_image";
+    if (card.type === 0) return "classic";
   }
+  if (card.imageUrl && !card.title && !card.description) return "image_only";
+  if (card.imageUrl && (card.title || card.description)) return "captioned_image";
+  return "classic";
+}
 
-  // ─── CAPTIONED IMAGE ───
-  if (card instanceof braze.CaptionedImage) {
-    return (
-      <div>
-        <div className="relative">
+// ─── Image Only Card ──────────────────────────────────────────────────────────
+function ImageOnlyCard({ card }) {
+  if (!card.imageUrl) return null;
+  return (
+    <div className="w-full bg-black rounded-xl overflow-hidden">
+      <img
+        src={card.imageUrl}
+        alt={card.title || ""}
+        className="w-full object-contain"
+        style={{ maxHeight: "400px" }}
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={(e) => (e.currentTarget.parentElement.style.display = "none")}
+      />
+    </div>
+  );
+}
+
+// ─── Captioned Image Card ─────────────────────────────────────────────────────
+function CaptionedImageCard({ card }) {
+  return (
+    <div>
+      {card.imageUrl && (
+        <div className="w-full bg-gray-100 rounded-t-xl overflow-hidden">
           <img
             src={card.imageUrl}
             alt={card.title || ""}
-            className="w-full h-auto object-contain"
+            className="w-full object-contain"
+            style={{ maxHeight: "300px" }}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={(e) =>
+              (e.currentTarget.parentElement.style.display = "none")
+            }
           />
-
-          {card.pinned && (
-            <Pin className="absolute top-2 right-2 w-4 h-4 text-white" />
-          )}
         </div>
-
-        <div className="p-4">
-          {card.title && (
-            <h3 className="font-semibold text-gray-900">{card.title}</h3>
-          )}
-
-          {card.description && (
-            <p className="text-sm text-gray-600 mt-1">
-              {card.description}
-            </p>
-          )}
-
-          {card.linkText && (
-            <p className="text-blue-600 mt-2 text-sm">
-              {card.linkText}
-            </p>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ─── CLASSIC ───
-  if (card instanceof braze.ClassicCard) {
-    return (
-      <div className="flex gap-3 p-4">
-        {card.imageUrl && (
-          <img
-            src={card.imageUrl}
-            alt=""
-            className="w-16 h-16 rounded-lg object-cover"
-          />
-        )}
-
-        <div className="flex-1">
-          <div className="flex items-start justify-between">
-            <div>
-              {card.title && (
-                <h3 className="font-semibold text-gray-900">
-                  {card.title}
-                </h3>
-              )}
-
-              {card.description && (
-                <p className="text-sm text-gray-600 mt-1">
-                  {card.description}
-                </p>
-              )}
-
-              {card.linkText && (
-                <p className="text-blue-600 mt-1 text-sm">
-                  {card.linkText}
-                </p>
-              )}
-            </div>
-
-            {card.pinned && (
-              <Pin className="w-4 h-4 text-gray-400 ml-2" />
-            )}
+      )}
+      <div className="p-4">
+        {card.title && (
+          <div className="flex items-center gap-1 mb-1">
+            <span className="text-base font-bold">{card.title}</span>
+            {card.pinned && <Pin className="w-3 h-3 text-gray-400" />}
           </div>
-        </div>
+        )}
+        {card.description && (
+          <p className="text-sm text-gray-600">{card.description}</p>
+        )}
+        {card.linkText && (
+          <p className="text-sm font-medium text-[#0088CC] mt-2">
+            {card.linkText}
+          </p>
+        )}
       </div>
-    );
-  }
-
-  return null;
+    </div>
+  );
 }
 
-// ─── MAIN ───
-function InboxPage() {
-  const [mounted, setMounted] = useState(false);
+// ─── Classic Card ─────────────────────────────────────────────────────────────
+function ClassicCard({ card }) {
+  return (
+    <div className="flex items-center gap-3 p-4">
+      {card.imageUrl && (
+        <img
+          src={card.imageUrl}
+          alt={card.title || ""}
+          className="w-14 h-14 rounded-lg object-cover flex-shrink-0"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={(e) => (e.currentTarget.style.display = "none")}
+        />
+      )}
+      <div className="min-w-0 flex-1">
+        {card.title && (
+          <div className="flex items-center gap-1">
+            <span className="text-sm font-bold">{card.title}</span>
+            {card.pinned && <Pin className="w-3 h-3 text-gray-400" />}
+          </div>
+        )}
+        {card.description && (
+          <p className="text-xs text-gray-500 mt-0.5">{card.description}</p>
+        )}
+        {card.linkText && (
+          <p className="text-xs font-medium text-[#0088CC] mt-1">
+            {card.linkText}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Card Content Router ──────────────────────────────────────────────────────
+function CardContent({ card }) {
+  const type = getCardType(card);
+  if (type === "image_only") return <ImageOnlyCard card={card} />;
+  if (type === "captioned_image") return <CaptionedImageCard card={card} />;
+  return <ClassicCard card={card} />;
+}
+
+// ─── Helper ───────────────────────────────────────────────────────────────────
+function extractVisible(feed) {
+  const arr = feed?.cards ?? (Array.isArray(feed) ? feed : []);
+  return arr.filter((c) => !c.isControl);
+}
+
+// ─── Safe impression logger ───────────────────────────────────────────────────
+// Braze v6 exposes logContentCardImpressions (plural, takes array) at the
+// top-level SDK. card.logImpression() only exists on live SDK instances, not
+// on plain objects returned from getCachedContentCards().
+function logImpression(card) {
+  try {
+    if (typeof card.logImpression === "function") {
+      // Live SDK card instance — use the method directly
+      card.logImpression();
+    } else if (typeof braze.logContentCardImpressions === "function") {
+      // Fallback: top-level SDK function (plural, takes array)
+      braze.logContentCardImpressions([card]);
+    }
+  } catch (e) {
+    console.warn("Could not log impression for card:", card.id, e);
+  }
+}
+
+// ─── Safe click logger ────────────────────────────────────────────────────────
+function logClick(card) {
+  try {
+    if (typeof card.logClick === "function") {
+      card.logClick();
+    } else if (typeof braze.logContentCardClick === "function") {
+      braze.logContentCardClick(card);
+    }
+  } catch (e) {
+    console.warn("Could not log click for card:", card.id, e);
+  }
+}
+
+// ─── Main Inbox Page ──────────────────────────────────────────────────────────
+export default function InboxPage() {
   const [cards, setCards] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const impressions = useRef(new Set());
+  const loggedImpressions = useRef(new Set());
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
+    let unsubscribe = null;
 
     onBrazeReady(() => {
-      console.log("Braze ready");
-
-      braze.openSession();
-
-      braze.subscribeToInAppMessage((message) => {
-        if (message) {
-          braze.showInAppMessage(message);
-        }
-      });
-
+      // 1. Read cache immediately (synchronous) — zero delay
       const cached = braze.getCachedContentCards();
-      console.log("Cached cards:", cached);
-
-      if (cached?.cards) {
-        const filtered = cached.cards.filter((c) => !c.isControl);
-        setCards(sortCards(filtered));
-        setLoading(false);
+      const cachedVisible = extractVisible(cached);
+      if (cachedVisible.length > 0) {
+        console.log("📦 Loaded from cache:", cachedVisible.length);
+        setCards(cachedVisible);
       }
 
-      braze.subscribeToContentCardsUpdates((updates) => {
-        console.log("Content cards update:", updates);
-
-        const filtered = (updates.cards || []).filter(
-          (c) => !c.isControl
-        );
-
-        setCards(sortCards(filtered));
-        setLoading(false);
+      // 2. Subscribe for live updates
+      unsubscribe = braze.subscribeToContentCardsUpdates((update) => {
+        const visible = extractVisible(update);
+        console.log("📬 Cards update received:", visible.length, visible);
+        setCards(visible);
       });
 
+      // 3. Trigger fresh fetch from Braze servers
       braze.requestContentCardsRefresh();
     });
-  }, [mounted]);
 
-  // ─── CLICK HANDLER ───
-  const handleCardTap = useCallback((card) => {
-    card.logClick?.();
-
-    braze.logCustomEvent("content_card_clicked", {
-      card_id: card.id,
-      title: card.title,
-    });
-
-    braze.requestImmediateDataFlush?.();
-
-    setTimeout(() => {
-      if (!card.url) return;
-
-      if (!card.url.startsWith("http")) {
-        braze.handleBrazeAction(card.url);
-      } else {
-        window.open(card.url, "_blank");
-      }
-    }, 300);
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, []);
 
-  if (!mounted) return null;
+  // ─── Card Tap Handler ────────────────────────────────────────────────────
+  const handleCardTap = useCallback((card) => {
+    logClick(card);
 
+    if (!card.url) {
+      braze.requestImmediateDataFlush?.();
+      return;
+    }
+
+    if (!card.url.startsWith("http://") && !card.url.startsWith("https://")) {
+      // Braze deep-link / custom action (also triggers IAMs configured on click)
+      braze.handleBrazeAction?.(card.url);
+    } else {
+      window.open(card.url, "_blank", "noopener,noreferrer");
+    }
+
+    braze.requestImmediateDataFlush?.();
+  }, []);
+
+  // ─── Render ──────────────────────────────────────────────────────────────
   return (
-    <main className="min-h-screen bg-[#F2F2F7]">
-      {loading ? (
-        <div className="text-center py-24">Loading...</div>
-      ) : cards.length === 0 ? (
-        <div className="flex flex-col items-center py-24">
-          <Inbox className="w-12 h-12 text-gray-300" />
-          <p className="text-gray-400">No messages</p>
+    <main className="min-h-screen bg-gray-100">
+      {cards.length === 0 ? (
+        <div className="text-center py-20 text-gray-400">
+          <p className="text-lg font-medium">No messages yet</p>
+          <p className="text-sm mt-1">Check back later for updates</p>
         </div>
       ) : (
-        <div className="max-w-xl mx-auto py-4">
+        <div className="max-w-xl mx-auto py-4 px-3">
           {cards.map((card) => {
-            if (!impressions.current.has(card.id)) {
-              impressions.current.add(card.id);
-              card.logImpression?.();
+            // Log impression once per card per session
+            if (!loggedImpressions.current.has(card.id)) {
+              loggedImpressions.current.add(card.id);
+              logImpression(card);
             }
 
             return (
               <div
                 key={card.id}
                 onClick={() => handleCardTap(card)}
-                className="bg-white rounded-xl shadow-sm mb-3 overflow-hidden cursor-pointer hover:shadow-md transition"
+                className="bg-white rounded-xl shadow mb-3 cursor-pointer overflow-hidden hover:shadow-md transition-shadow"
               >
                 <CardContent card={card} />
               </div>
@@ -221,8 +238,4 @@ function InboxPage() {
       )}
     </main>
   );
-}
-
-export default function Page() {
-  return <InboxPage />;
 }

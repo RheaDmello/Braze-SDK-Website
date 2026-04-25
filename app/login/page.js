@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { braze, onBrazeReady } from "../lib/braze";
+import { braze, onBrazeReady, switchBrazeUser } from "../lib/braze";
 import { useAuth } from "../context/AuthContext";
 import { Loader2, ShoppingBag, Mail, ArrowRight } from "lucide-react";
 
@@ -13,6 +13,7 @@ export default function LoginPage() {
   const { user, login, loading } = useAuth();
   const router = useRouter();
 
+  // Already logged in → skip straight to inbox
   useEffect(() => {
     if (!loading && user) {
       router.replace("/inbox");
@@ -28,6 +29,8 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
+      // Step 1: Ask our server-side route whether this email already has a
+      //         Braze profile. It returns the canonical external_id to use.
       const res = await fetch("/api/braze-identify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -40,39 +43,46 @@ export default function LoginPage() {
         throw new Error(data.error || "Identity check failed");
       }
 
-      const externalId = data.external_id;
+      const externalId = data.external_id; // always the email in your setup
 
-      // Store both email and externalId in context + localStorage
+      // Step 2: Persist to context + localStorage BEFORE Braze calls so that
+      //         any re-renders triggered by login() already see the right user.
       login(trimmedEmail, externalId);
 
+      // Step 3: Switch Braze to the correct user.
+      //         switchBrazeUser handles the "SDK not ready yet" edge case.
+      switchBrazeUser(externalId);
+
+      // Step 4: After the user switch, set attributes + log events.
       onBrazeReady(() => {
         try {
-          braze.changeUser(externalId);
-
           const bUser = braze.getUser();
           if (bUser) {
             bUser.setEmail(trimmedEmail);
 
+            // Re-apply any profile data saved from a previous session
             const storedProfile =
-              JSON.parse(localStorage.getItem(`user_profile_${trimmedEmail}`)) || {};
+              JSON.parse(
+                localStorage.getItem(`user_profile_${trimmedEmail}`)
+              ) || {};
 
-            if (storedProfile.firstName?.trim()) bUser.setFirstName(storedProfile.firstName.trim());
-            if (storedProfile.lastName?.trim()) bUser.setLastName(storedProfile.lastName.trim());
-            if (storedProfile.phone?.trim()) bUser.setPhoneNumber(storedProfile.phone.trim());
+            if (storedProfile.firstName?.trim())
+              bUser.setFirstName(storedProfile.firstName.trim());
+            if (storedProfile.lastName?.trim())
+              bUser.setLastName(storedProfile.lastName.trim());
+            if (storedProfile.phone?.trim())
+              bUser.setPhoneNumber(storedProfile.phone.trim());
           }
 
-          setTimeout(() => {
-            braze.logCustomEvent("user_logged_in");
-            braze.requestContentCardsRefresh();
-            braze.requestImmediateDataFlush();
-          }, 500);
-
-          router.replace("/inbox");
+          braze.logCustomEvent("user_logged_in");
+          braze.requestContentCardsRefresh();
+          braze.requestImmediateDataFlush();
         } catch (error) {
-          console.error("Braze login error:", error);
-          alert("Login failed. Please try again.");
+          console.error("Braze post-login setup error:", error);
         } finally {
+          // Navigate regardless of Braze errors so the user isn't stuck
           setIsLoading(false);
+          router.replace("/inbox");
         }
       });
     } catch (err) {
@@ -82,8 +92,7 @@ export default function LoginPage() {
     }
   };
 
-  if (loading) return null;
-  if (user) return null;
+  if (loading || user) return null;
 
   return (
     <div className="min-h-screen flex bg-white">
@@ -93,7 +102,8 @@ export default function LoginPage() {
         <div
           className="absolute inset-0 opacity-10"
           style={{
-            backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)",
+            backgroundImage:
+              "radial-gradient(circle, white 1px, transparent 1px)",
             backgroundSize: "32px 32px",
           }}
         />
@@ -113,13 +123,17 @@ export default function LoginPage() {
             </span>
           </h2>
           <p className="text-gray-400 text-lg max-w-sm">
-            Discover handpicked products, personalised offers, and seamless checkout — all in one place.
+            Discover handpicked products, personalised offers, and seamless
+            checkout — all in one place.
           </p>
         </div>
 
         <div className="relative flex gap-6">
           {["Free Shipping", "Secure Payments", "24/7 Support"].map((item) => (
-            <div key={item} className="flex items-center gap-2 text-gray-400 text-sm">
+            <div
+              key={item}
+              className="flex items-center gap-2 text-gray-400 text-sm"
+            >
               <span className="w-1.5 h-1.5 bg-gray-500 rounded-full" />
               {item}
             </div>
@@ -139,7 +153,9 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-2">
-            <h1 className="text-3xl font-extrabold text-gray-900">Welcome back</h1>
+            <h1 className="text-3xl font-extrabold text-gray-900">
+              Welcome back
+            </h1>
             <p className="text-gray-500 text-sm">
               Enter your email to sign in to your account
             </p>
@@ -188,9 +204,13 @@ export default function LoginPage() {
 
           <p className="text-xs text-gray-400 text-center">
             By continuing, you agree to our{" "}
-            <span className="underline cursor-pointer hover:text-gray-600">Terms of Service</span>{" "}
+            <span className="underline cursor-pointer hover:text-gray-600">
+              Terms of Service
+            </span>{" "}
             &{" "}
-            <span className="underline cursor-pointer hover:text-gray-600">Privacy Policy</span>
+            <span className="underline cursor-pointer hover:text-gray-600">
+              Privacy Policy
+            </span>
           </p>
         </div>
       </div>
