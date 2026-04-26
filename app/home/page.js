@@ -20,7 +20,7 @@ function BannerSlot({ placementId, className }) {
 }
 
 export default function Home() {
-  const topBanner = useBanners("top_banner");
+  const topBanner = useBanners("homepage_top_banner");
   const sideBanner = useBanners("side_banner");
   const hasAnyBanner = topBanner || sideBanner;
 
@@ -35,7 +35,7 @@ export default function Home() {
 
       {/* ─── Top Banner ─── */}
       <BannerSlot
-        placementId="top_banner"
+        placementId="homepage_top_banner"
         className="w-full h-64 rounded-3xl overflow-hidden shadow-lg"
       />
 

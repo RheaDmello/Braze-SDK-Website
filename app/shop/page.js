@@ -446,9 +446,7 @@ export default function Shop() {
  className="w-full h-full object-cover"
  />
  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
- <Badge className="absolute top-4 left-4 bg-white/90 text-black text-sm font-semibold backdrop-blur-sm">
- {selectedProduct.category}
- </Badge>
+
  <div className="absolute bottom-5 left-5 text-white">
  <p className="text-sm text-gray-300 mb-1">Premium Product</p>
  <h2 className="text-3xl font-extrabold">{selectedProduct.name}</h2>
