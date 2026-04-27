@@ -32,7 +32,7 @@ export async function initBraze(userId) {
   if (!initialized) {
     brazeSDK.initialize(apiKey, {
       baseUrl,
-      enableLogging: false,
+      enableLogging: true,
       allowUserSuppliedJavascript: true,
       noCookies: false,
       cookieExpiryInDays: 400,
@@ -78,3 +78,23 @@ export function onBrazeReady(cb) {
 }
 
 export { brazeSDK as braze };
+
+// insertBanner is the correct Braze SDK method name
+export function renderBanner(banner, element) {
+  console.log("[renderBanner] available SDK methods relating to banner:",
+    Object.keys(brazeSDK).filter(k => k.toLowerCase().includes("banner"))
+  );
+
+  if (typeof brazeSDK.insertBanner === "function") {
+    // Correct method name per Braze Web SDK
+    brazeSDK.insertBanner(banner, element);
+  } else if (typeof brazeSDK.renderBanner === "function") {
+    brazeSDK.renderBanner(banner, element);
+  } else if (banner.html) {
+    console.warn("[renderBanner] No SDK render method found, injecting html directly");
+    element.innerHTML = banner.html;
+    if (typeof brazeSDK.logBannerImpressions === "function") {
+      brazeSDK.logBannerImpressions([banner]);
+    }
+  }
+}
